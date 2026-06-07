@@ -1,0 +1,23 @@
+# ========================
+# OS & Editor
+# ========================
+.DS_Store
+Thumbs.db
+.vscode/
+
+# ========================
+# Dependencies (jika nanti pakai npm)
+# ========================
+node_modules/
+package-lock.json
+
+# ========================
+# Upload lokal (legacy XAMPP)
+# ========================
+uploads/
+
+# ========================
+# Environment / Secrets
+# Jangan commit file ini jika berisi key asli
+# ========================
+# supabase-config.js

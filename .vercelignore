@@ -1,0 +1,21 @@
+# Legacy PHP backend (tidak dipakai di Vercel)
+api.php
+database.php
+import_dummy.php
+index.php
+
+# Versi lama (LocalStorage)
+kasir.html
+
+# File upload lokal (diganti Supabase Storage)
+uploads/
+
+# Dokumentasi & SQL (hanya untuk referensi lokal)
+*.md
+schema.sql
+data_demo.sql
+supabase_schema.sql
+supabase_seed.sql
+
+# Editor config
+.vscode/

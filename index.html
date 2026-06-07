@@ -1,0 +1,1549 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Kasir Pintar — Cloud Edition</title>
+    <meta name="description" content="Sistem Kasir Pintar (POS) berbasis cloud dengan Supabase & Vercel. Kelola transaksi, menu, analitik bisnis, dan kalkulator balik modal.">
+    <!-- Modern Typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Supabase JS Client v2 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <!-- Supabase Config (URL + Anon Key) -->
+    <script src="supabase-config.js"></script>
+
+    <style>
+        :root {
+            --primary: #0071e4;
+            --primary-dark: #005bb5;
+            --secondary: #b5e0ea;
+            --dark: #0f4c81;
+            --bg: #f4f7f6;
+            --surface: #ffffff;
+            --text: #1a1a1a;
+            --text-light: #666666;
+            --border: #e0e0e0;
+            --danger: #e74c3c;
+            --success: #2ecc71;
+            --warning: #f1c40f;
+            --radius: 12px;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --sidebar-width: 250px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Outfit', sans-serif; background-color: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+
+        /* --- SIDEBAR NAV --- */
+        .sidebar { width: var(--sidebar-width); background: var(--dark); color: white; display: flex; flex-direction: column; padding: 24px 0; box-shadow: 2px 0 10px rgba(0,0,0,0.1); z-index: 20; }
+        .brand { font-size: 1.5rem; font-weight: 700; padding: 0 24px; margin-bottom: 30px; color: var(--secondary); display: flex; align-items: center; gap: 10px; }
+        .brand .cloud-badge { font-size: 0.6rem; background: var(--success); color: white; padding: 2px 8px; border-radius: 20px; letter-spacing: 0.5px; text-transform: uppercase; font-weight: 700; }
+        .nav-items { display: flex; flex-direction: column; gap: 8px; padding: 0 16px; }
+        .nav-btn { background: transparent; color: rgba(255,255,255,0.7); border: none; padding: 14px 20px; border-radius: 8px; text-align: left; font-size: 1.05rem; font-weight: 600; font-family: inherit; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 12px; }
+        .nav-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+        .nav-btn.active { background: var(--primary); color: white; box-shadow: 0 4px 10px rgba(0,113,228,0.4); }
+
+        /* --- MAIN CONTENT --- */
+        .main-content { flex: 1; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+        .view-section { display: none; width: 100%; height: 100%; animation: fadeIn 0.3s ease; }
+        .view-section.active { display: flex; flex-direction: column; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .page-header { padding: 24px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .page-title h1 { font-size: 1.8rem; color: var(--dark); }
+        .page-title p { color: var(--text-light); font-size: 0.95rem; }
+
+        /* --- KASIR VIEW --- */
+        .pos-container { display: flex; flex: 1; overflow: hidden; }
+        .products-area { flex: 2; padding: 24px; overflow-y: auto; }
+        .cart-area { flex: 1; min-width: 350px; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; }
+        .products-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px; }
+        .product-card { background: var(--surface); border-radius: var(--radius); padding: 16px; text-align: center; cursor: pointer; border: 2px solid transparent; box-shadow: var(--shadow); transition: all 0.2s ease; }
+        .product-card:hover { transform: translateY(-4px); border-color: var(--primary); }
+        .product-img { width: 100%; height: 130px; object-fit: cover; border-radius: 8px; margin-bottom: 12px; }
+        .product-name { font-weight: 700; font-size: 1.1rem; margin-bottom: 4px; }
+        .product-price { color: var(--primary); font-weight: 600; }
+
+        /* Cart List */
+        .cart-list { flex: 1; overflow-y: auto; padding: 24px; }
+        .cart-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px dashed var(--border); }
+        .item-info h4 { font-size: 1rem; margin-bottom: 4px; }
+        .item-info p { font-size: 0.85rem; color: var(--text-light); }
+        .stepper { display: flex; align-items: center; background: var(--bg); border-radius: 20px; overflow: hidden; }
+        .stepper button { background: none; border: none; padding: 6px 12px; cursor: pointer; font-weight: bold; }
+        .stepper button:hover { background: var(--secondary); color: var(--primary); }
+        .stepper span { font-size: 0.9rem; font-weight: 600; min-width: 20px; text-align: center; }
+        .item-total { font-weight: 700; color: var(--dark); }
+
+        /* Checkout Box */
+        .checkout-box { padding: 24px; border-top: 1px solid var(--border); background: var(--bg); }
+        .total-row { display: flex; justify-content: space-between; font-weight: 700; font-size: 1.4rem; color: var(--dark); margin-bottom: 16px; }
+        .input-group { margin-bottom: 16px; }
+        .input-group label { display: block; font-size: 0.9rem; font-weight: 600; color: var(--text-light); margin-bottom: 8px; }
+        .input-group input { width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px; font-size: 1.1rem; font-family: inherit; }
+        .input-group input:focus { border-color: var(--primary); outline: none; }
+        .btn-pay { width: 100%; padding: 16px; background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 1.1rem; cursor: pointer; transition: 0.2s; }
+        .btn-pay:hover { background: var(--dark); }
+
+        /* --- MANAJEMEN MENU VIEW --- */
+        .menu-manager-area { padding: 24px; overflow-y: auto; flex: 1; }
+        .form-card { background: var(--surface); padding: 24px; border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 24px; max-width: 800px; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+        .btn-add { background: var(--success); color: white; padding: 12px 24px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .btn-add:hover { background: #27ae60; }
+        
+        .menu-table-wrapper { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 16px; text-align: left; border-bottom: 1px solid var(--border); }
+        th { background: var(--bg); font-weight: 600; color: var(--text-light); }
+        .btn-del { background: var(--danger); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem;}
+
+        /* --- ANALISIS VIEW --- */
+        .analytics-area { padding: 24px; overflow-y: auto; flex: 1; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 24px; margin-bottom: 24px; }
+        .stat-card { background: var(--surface); padding: 24px; border-radius: var(--radius); box-shadow: var(--shadow); border-left: 4px solid var(--primary); }
+        .stat-title { font-size: 1rem; color: var(--text-light); margin-bottom: 8px; font-weight: 600; }
+        .stat-value { font-size: 2rem; font-weight: 700; color: var(--dark); }
+        .stat-value.profit { color: var(--success); }
+        .btn-export { background: var(--success); color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; font-family: inherit; }
+        .btn-export:hover { background: #27ae60; }
+
+        /* --- FILTER BAR --- */
+        .filter-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+        .filter-bar label { font-weight: 600; font-size: 0.9rem; color: var(--text-light); }
+        .filter-bar select { padding: 10px 14px; border: 2px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 0.95rem; background: var(--surface); color: var(--text); cursor: pointer; min-width: 200px; }
+        .filter-bar select:focus { border-color: var(--primary); outline: none; }
+
+        /* --- RIWAYAT TRANSAKSI TABLE --- */
+        .trx-detail-toggle { background: none; border: 1px solid var(--border); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-family: inherit; color: var(--primary); font-weight: 600; }
+        .trx-detail-toggle:hover { background: var(--primary); color: white; }
+        .trx-detail-row td { padding: 0; }
+        .trx-detail-content { padding: 12px 24px; background: var(--bg); font-size: 0.85rem; }
+        .trx-detail-content .detail-item { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed var(--border); }
+        .trx-detail-content .detail-item:last-child { border-bottom: none; }
+
+        /* --- BALIK MODAL VIEW --- */
+        .bep-area { padding: 24px; overflow-y: auto; flex: 1; }
+        .bep-hero { background: linear-gradient(135deg, var(--dark) 0%, #1a6cb5 100%); color: white; padding: 28px 32px; border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 24px; }
+        .bep-hero .bep-hero-label { font-size: 0.9rem; opacity: 0.8; font-weight: 600; margin-bottom: 4px; }
+        .bep-hero .bep-hero-value { font-size: 2.2rem; font-weight: 700; margin-bottom: 16px; }
+        .bep-hero-stats { display: flex; gap: 32px; flex-wrap: wrap; margin-bottom: 20px; }
+        .bep-hero-stat { min-width: 120px; }
+        .bep-hero-stat .hs-label { font-size: 0.8rem; opacity: 0.7; }
+        .bep-hero-stat .hs-value { font-size: 1.3rem; font-weight: 700; }
+        .bep-progress-bar { width: 100%; height: 12px; background: rgba(255,255,255,0.2); border-radius: 6px; overflow: hidden; }
+        .bep-progress-fill { height: 100%; background: linear-gradient(90deg, var(--warning), var(--success)); border-radius: 6px; transition: width 0.8s cubic-bezier(0.4,0,0.2,1); }
+        .bep-progress-meta { display: flex; justify-content: space-between; margin-top: 8px; font-size: 0.8rem; opacity: 0.7; }
+        .bep-columns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+        .bep-col-card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; }
+        .bep-col-header { padding: 16px 20px; font-weight: 700; font-size: 1rem; color: white; }
+        .bep-col-header.capital { background: var(--dark); }
+        .bep-col-header.income { background: var(--success); }
+        .bep-col-header.expense { background: var(--danger); }
+        .bep-col-header .col-total { font-size: 1.3rem; margin-top: 4px; }
+        .bep-col-form { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+        .bep-col-form .input-group { margin-bottom: 8px; }
+        .bep-col-form .input-group label { font-size: 0.8rem; margin-bottom: 4px; }
+        .bep-col-form .input-group input { padding: 10px; font-size: 0.95rem; }
+        .bep-col-form .btn-add { width: 100%; padding: 10px; font-size: 0.85rem; font-family: inherit; margin-top: 4px; }
+        .bep-col-list { flex: 1; padding: 12px 20px; overflow-y: auto; max-height: 280px; }
+        .bep-col-list .list-title { font-size: 0.8rem; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+        .record-list { display: flex; flex-direction: column; gap: 6px; }
+        .record-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg); border-radius: 6px; font-size: 0.85rem; transition: background 0.15s; }
+        .record-item:hover { background: var(--border); }
+        .record-item .rec-desc { font-weight: 600; margin-bottom: 2px; }
+        .record-item .rec-amount { font-weight: 700; white-space: nowrap; }
+        .record-item .rec-amount.income { color: var(--success); }
+        .record-item .rec-amount.expense { color: var(--danger); }
+        .record-item .rec-date { font-size: 0.7rem; color: var(--text-light); }
+        .record-item .btn-del-sm { background: transparent; border: 1px solid var(--danger); color: var(--danger); padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; transition: all 0.15s; flex-shrink: 0; }
+        .record-item .btn-del-sm:hover { background: var(--danger); color: white; }
+
+        /* Modal */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; opacity: 0; pointer-events: none; transition: 0.3s; z-index: 100;}
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+        .modal-content { background: white; padding: 30px; border-radius: var(--radius); width: 90%; max-width: 400px; text-align: center; transform: scale(0.95); transition: 0.3s; }
+        .modal-overlay.active .modal-content { transform: scale(1); }
+        .btn-close { background: var(--bg); border: 1px solid var(--border); padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 10px; font-family: inherit; }
+
+        /* --- TOAST NOTIFICATION --- */
+        .toast-container { position: fixed; top: 24px; right: 24px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
+        .toast { padding: 14px 20px; border-radius: 10px; font-weight: 600; font-size: 0.9rem; color: white; box-shadow: 0 8px 24px rgba(0,0,0,0.15); animation: toastIn 0.3s ease, toastOut 0.3s ease 2.7s forwards; backdrop-filter: blur(8px); }
+        .toast.success { background: linear-gradient(135deg, #10b981, #059669); }
+        .toast.error { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        .toast.info { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+        @keyframes toastIn { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes toastOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-10px); } }
+
+        /* ==========================================
+           RESPONSIVE DESIGN (MOBILE OPTIMIZATION)
+           ========================================== */
+        @media (max-width: 768px) {
+            body { flex-direction: column; }
+            .sidebar { width: 100%; flex-direction: row; padding: 0; order: 2; box-shadow: 0 -4px 15px rgba(0,0,0,0.05); justify-content: space-around; background: var(--surface); z-index: 50; }
+            .brand { display: none; }
+            .nav-items { flex-direction: row; width: 100%; padding: 0; justify-content: space-around; gap: 0; }
+            .nav-btn { flex-direction: column; padding: 12px 4px; font-size: 0.75rem; border-radius: 0; color: var(--text-light); gap: 6px; text-align: center; flex: 1; }
+            .nav-btn:hover { background: var(--bg); color: var(--primary); }
+            .nav-btn.active { background: transparent; color: var(--primary); box-shadow: none; border-top: 3px solid var(--primary); font-weight: 700; }
+            .main-content { order: 1; flex: 1; }
+            .page-header { padding: 16px; flex-direction: column; gap: 12px; align-items: flex-start; }
+            .pos-container { flex-direction: column; overflow: hidden; }
+            .products-area { flex: 1; min-height: 0; height: auto; padding: 12px; }
+            .products-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+            .product-img { height: 100px; }
+            .cart-area { flex: 1; min-height: 0; height: auto; min-width: 100%; border-left: none; border-top: 2px solid var(--border); }
+            .checkout-box { padding: 16px; box-shadow: 0 -4px 10px rgba(0,0,0,0.05); }
+            .menu-manager-area, .analytics-area { padding: 16px; }
+            .form-grid { grid-template-columns: 1fr; gap: 12px; }
+            .stats-grid { grid-template-columns: 1fr; gap: 16px; }
+            .menu-table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            table { min-width: 600px; }
+            .bep-columns { grid-template-columns: 1fr; }
+            .bep-hero-value { font-size: 1.6rem; }
+            .bep-hero-stats { gap: 16px; }
+            .bep-hero-stat .hs-value { font-size: 1.1rem; }
+        }
+
+        @media (max-width: 480px) {
+            .bep-hero { padding: 20px; }
+            .bep-hero-value { font-size: 1.3rem; }
+            .bep-hero-stats { flex-direction: column; gap: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- TOAST CONTAINER -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- SIDEBAR -->
+    <nav class="sidebar">
+        <div class="brand">Kasir Pintar <span class="cloud-badge">☁ Cloud</span></div>
+        <div class="nav-items">
+            <button class="nav-btn active" onclick="switchView('pos', this)">Kasir</button>
+            <button class="nav-btn" onclick="switchView('menu', this)">Manajemen Menu</button>
+            <button class="nav-btn" onclick="switchView('analytics', this)">Analitik Bisnis</button>
+            <button class="nav-btn" onclick="switchView('bep', this)">Kalkulator Balik Modal</button>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <!-- VIEW 1: KASIR -->
+        <section id="view-pos" class="view-section active">
+            <div class="pos-container">
+                <div class="products-area">
+                    <div class="products-grid" id="pos-products">
+                        <div style="color:var(--text-light); grid-column: 1 / -1;">Memuat menu dari Supabase...</div>
+                    </div>
+                </div>
+                <div class="cart-area">
+                    <div class="page-header" style="padding: 16px 24px;">
+                        <h2>Keranjang</h2>
+                        <span id="cart-count" style="background: var(--secondary); padding: 4px 10px; border-radius: 20px; font-weight: 600; font-size: 0.9rem;">0 item</span>
+                    </div>
+                    <div class="cart-list" id="cart-list"></div>
+                    <div class="checkout-box">
+                        <div class="total-row">
+                            <span>Total</span>
+                            <span id="pos-total">Rp 0</span>
+                        </div>
+                        <div class="input-group">
+                            <label>Uang Tunai (Rp)</label>
+                            <input type="number" id="pos-cash" placeholder="Contoh: 50000">
+                        </div>
+                        <button class="btn-pay" id="btn-pay" onclick="processCheckout()">Proses Pembayaran</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 2: MANAJEMEN MENU -->
+        <section id="view-menu" class="view-section">
+            <div class="page-header">
+                <div class="page-title">
+                    <h1>Manajemen Menu</h1>
+                    <p>Atur daftar produk yang tersimpan di Database Supabase.</p>
+                </div>
+            </div>
+            <div class="menu-manager-area">
+                <div class="form-card">
+                    <h3 style="margin-bottom: 16px; color: var(--dark);">Tambah Menu Baru</h3>
+                    <div class="form-grid">
+                        <div class="input-group">
+                            <label>Nama Menu</label>
+                            <input type="text" id="menu-name" placeholder="Misal: Es Kopi Susu">
+                        </div>
+                        <div class="input-group">
+                            <label>Unggah Gambar</label>
+                            <input type="file" id="menu-image" accept="image/png, image/jpeg, image/jpg, image/webp" style="padding: 9px;">
+                        </div>
+                        <div class="input-group">
+                            <label>Harga Jual (Rp)</label>
+                            <input type="number" id="menu-price" placeholder="Harga untuk pelanggan">
+                        </div>
+                        <div class="input-group">
+                            <label>Harga Modal (Rp) <span style="color:var(--danger); font-size:0.8rem;">*Untuk hitung untung</span></label>
+                            <input type="number" id="menu-cost" placeholder="Modal belanja">
+                        </div>
+                    </div>
+                    <button class="btn-add" onclick="addNewProduct()">+ Simpan Menu ke DB</button>
+                </div>
+
+                <div class="menu-table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Gambar</th>
+                                <th>Nama Menu</th>
+                                <th>Harga Jual</th>
+                                <th>Harga Modal</th>
+                                <th>Laba/Item</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="menu-table-body">
+                            <tr><td colspan="6" style="text-align:center;">Memuat dari Supabase...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 3: ANALISIS BISNIS -->
+        <section id="view-analytics" class="view-section">
+            <div class="page-header">
+                <div class="page-title">
+                    <h1>Analitik Bisnis</h1>
+                    <p>Pantau omset, keuntungan bersih, dan produk terlaris Anda.</p>
+                </div>
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                    <button class="btn-export" style="background: var(--bg); color: var(--primary); border: 1px solid var(--primary);" onclick="importDummyData()">Impor Data Demo</button>
+                    <button class="btn-export" style="background: var(--bg); color: var(--danger); border: 1px solid var(--danger);" onclick="resetAnalytics()">Hapus Riwayat DB</button>
+                    <button class="btn-export" onclick="exportToExcel()">Export ke Excel (.csv)</button>
+                </div>
+            </div>
+            <div class="analytics-area">
+                <!-- Filter Bulan -->
+                <div class="filter-bar">
+                    <label for="filter-month">Filter Bulan:</label>
+                    <select id="filter-month" onchange="renderAnalytics()">
+                        <option value="all">Semua Bulan</option>
+                    </select>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-title">Total Transaksi</div>
+                        <div class="stat-value" id="stat-trx-count">0</div>
+                    </div>
+                    <div class="stat-card" style="border-left-color: var(--secondary);">
+                        <div class="stat-title">Total Omset (Pendapatan Kotor)</div>
+                        <div class="stat-value" id="stat-omset">Rp 0</div>
+                    </div>
+                    <div class="stat-card" style="border-left-color: var(--success);">
+                        <div class="stat-title">Laba Bersih (Keuntungan)</div>
+                        <div class="stat-value profit" id="stat-profit">Rp 0</div>
+                    </div>
+                </div>
+
+                <div class="form-card" style="max-width: 100%;">
+                    <h3 style="margin-bottom: 16px; color: var(--dark);">Produk Terlaris (Best Sellers)</h3>
+                    <div class="menu-table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Peringkat</th>
+                                    <th>Nama Produk</th>
+                                    <th>Jumlah Terjual</th>
+                                    <th>Total Disumbangkan (Omset)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bestseller-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Riwayat Transaksi -->
+                <div class="form-card" style="max-width: 100%;">
+                    <h3 style="margin-bottom: 16px; color: var(--dark);">Riwayat Transaksi</h3>
+                    <div class="menu-table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Waktu</th>
+                                    <th>Total Belanja</th>
+                                    <th>Modal</th>
+                                    <th>Laba</th>
+                                    <th>Bayar</th>
+                                    <th>Kembali</th>
+                                    <th>Detail</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trx-history-body">
+                                <tr><td colspan="8" style="text-align:center;">Memuat...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 4: KALKULATOR BALIK MODAL -->
+        <section id="view-bep" class="view-section">
+            <div class="page-header">
+                <div class="page-title">
+                    <h1>Kalkulator Balik Modal</h1>
+                    <p>Catat modal awal, pemasukan, dan pengeluaran bulanan untuk estimasi titik impas (BEP).</p>
+                </div>
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                    <button class="btn-export" style="background: var(--bg); color: var(--primary); border: 1px solid var(--primary);" onclick="importDummyData()">Impor Data Demo</button>
+                </div>
+            </div>
+            <div class="bep-area">
+                <!-- Filter Bulan BEP -->
+                <div class="filter-bar">
+                    <label for="filter-bep-month">Pilih Bulan Analisis:</label>
+                    <select id="filter-bep-month" onchange="renderBEP()"></select>
+                </div>
+
+                <!-- Hero Estimasi -->
+                <div class="bep-hero">
+                    <div class="bep-hero-label">Estimasi Balik Modal</div>
+                    <div class="bep-hero-value" id="bep-estimation">Belum dapat dihitung</div>
+                    <div class="bep-hero-stats">
+                        <div class="bep-hero-stat">
+                            <div class="hs-label">Modal Awal</div>
+                            <div class="hs-value" id="bep-total-modal">Rp 0</div>
+                        </div>
+                        <div class="bep-hero-stat">
+                            <div class="hs-label" id="bep-income-label">Pemasukan Bulan Ini</div>
+                            <div class="hs-value" id="bep-income">Rp 0</div>
+                        </div>
+                        <div class="bep-hero-stat">
+                            <div class="hs-label" id="bep-expense-label">Pengeluaran Bulan Ini</div>
+                            <div class="hs-value" id="bep-expense">Rp 0</div>
+                        </div>
+                        <div class="bep-hero-stat">
+                            <div class="hs-label" id="bep-profit-label">Profit Bersih / Bulan</div>
+                            <div class="hs-value" id="bep-profit">Rp 0</div>
+                        </div>
+                    </div>
+                    <div class="bep-progress-bar">
+                        <div class="bep-progress-fill" id="bep-progress" style="width: 0%;"></div>
+                    </div>
+                    <div class="bep-progress-meta">
+                        <span id="bep-recovered">Terkumpul: Rp 0</span>
+                        <span id="bep-pct">0%</span>
+                        <span id="bep-target">Target: Rp 0</span>
+                    </div>
+                </div>
+
+                <!-- 3 Kolom: Form + Riwayat per kategori -->
+                <div class="bep-columns">
+                    <div class="bep-col-card">
+                        <div class="bep-col-header capital">
+                            <div>Modal Awal</div>
+                            <div class="col-total" id="col-total-capital">Rp 0</div>
+                        </div>
+                        <div class="bep-col-form">
+                            <div class="input-group"><label>Keterangan</label><input type="text" id="cap-desc" placeholder="Misal: Sewa Tempat"></div>
+                            <div class="input-group"><label>Jumlah (Rp)</label><input type="number" id="cap-amount" placeholder="5000000"></div>
+                            <button class="btn-add" onclick="addCapitalRecord()">+ Catat Modal</button>
+                        </div>
+                        <div class="bep-col-list">
+                            <div class="list-title">Riwayat Tercatat</div>
+                            <div class="record-list" id="capital-list">Memuat...</div>
+                        </div>
+                    </div>
+                    <div class="bep-col-card">
+                        <div class="bep-col-header income">
+                            <div>Pemasukan Bulanan</div>
+                            <div class="col-total" id="col-total-income">Rp 0</div>
+                        </div>
+                        <div class="bep-col-form">
+                            <div class="input-group"><label>Keterangan</label><input type="text" id="inc-desc" placeholder="Misal: Pendapatan Jualan"></div>
+                            <div class="input-group"><label>Jumlah (Rp)</label><input type="number" id="inc-amount" placeholder="3000000"></div>
+                            <button class="btn-add" onclick="addMonthlyRecord('income')">+ Catat Pemasukan</button>
+                        </div>
+                        <div class="bep-col-list">
+                            <div class="list-title" id="income-list-title">Riwayat Bulan Ini</div>
+                            <div class="record-list" id="income-list">Memuat...</div>
+                        </div>
+                    </div>
+                    <div class="bep-col-card">
+                        <div class="bep-col-header expense">
+                            <div>Pengeluaran Bulanan</div>
+                            <div class="col-total" id="col-total-expense">Rp 0</div>
+                        </div>
+                        <div class="bep-col-form">
+                            <div class="input-group"><label>Keterangan</label><input type="text" id="exp-desc" placeholder="Misal: Listrik, Gaji"></div>
+                            <div class="input-group"><label>Jumlah (Rp)</label><input type="number" id="exp-amount" placeholder="1500000"></div>
+                            <button class="btn-add" style="background: var(--danger);" onclick="addMonthlyRecord('expense')">+ Catat Pengeluaran</button>
+                        </div>
+                        <div class="bep-col-list">
+                            <div class="list-title" id="expense-list-title">Riwayat Bulan Ini</div>
+                            <div class="record-list" id="expense-list">Memuat...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal Receipt -->
+    <div class="modal-overlay" id="receipt-modal">
+        <div class="modal-content">
+            <h2 style="margin: 10px 0; color: var(--success);">Transaksi Sukses</h2>
+            <div id="receipt-details" style="text-align: left; background: var(--bg); padding: 16px; border-radius: 8px; font-family: monospace; margin: 20px 0;"></div>
+            <button class="btn-close" onclick="closeModal('receipt-modal')">Tutup & Pesanan Baru</button>
+        </div>
+    </div>
+
+    <script>
+        /* ==========================================
+           UTILITIES & FORMATTERS
+           ========================================== */
+        const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
+
+        /** Format ISO date to dd/mm/yyyy, HH:ii:ss (WIB) */
+        function formatDateWIB(isoString) {
+            if (!isoString) return '-';
+            const d = new Date(isoString);
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        }
+
+        /** Extract yyyy-mm from ISO date string */
+        function getYearMonth(isoString) {
+            if (!isoString) return '';
+            const d = new Date(isoString);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        }
+
+        /** Show toast notification */
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        /* ==========================================
+           SUPABASE DATA LAYER (Mengganti PHP API)
+           ========================================== */
+        class SupabaseRepository {
+            constructor(client) {
+                this.db = client;
+            }
+
+            // --- Products ---
+            async getProducts() {
+                try {
+                    const { data, error } = await this.db.from('products').select('*').order('id', { ascending: false });
+                    if (error) throw error;
+                    return data || [];
+                } catch (e) { console.error('getProducts:', e); return []; }
+            }
+
+            async addProduct(product) {
+                try {
+                    const { error } = await this.db.from('products').insert(product);
+                    if (error) throw error;
+                    return { status: 'success' };
+                } catch (e) { console.error('addProduct:', e); return { status: 'error', message: e.message }; }
+            }
+
+            async uploadProductImage(file) {
+                try {
+                    const ext = file.name.split('.').pop();
+                    const fileName = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+                    const { data, error } = await this.db.storage.from('product-images').upload(fileName, file);
+                    if (error) throw error;
+                    // Get public URL
+                    const { data: urlData } = this.db.storage.from('product-images').getPublicUrl(fileName);
+                    return urlData.publicUrl;
+                } catch (e) {
+                    console.error('uploadImage:', e);
+                    return null;
+                }
+            }
+
+            async deleteProduct(id) {
+                try {
+                    // Get icon URL to delete from storage if needed
+                    const { data: product } = await this.db.from('products').select('icon').eq('id', id).single();
+                    if (product && product.icon && product.icon.includes('product-images')) {
+                        const pathParts = product.icon.split('/product-images/');
+                        if (pathParts[1]) {
+                            await this.db.storage.from('product-images').remove([pathParts[1]]);
+                        }
+                    }
+                    const { error } = await this.db.from('products').delete().eq('id', id);
+                    if (error) throw error;
+                } catch (e) { console.error('deleteProduct:', e); }
+            }
+
+            // --- Transactions ---
+            async getTransactions() {
+                try {
+                    const { data, error } = await this.db
+                        .from('transactions')
+                        .select('*, transaction_items(*)')
+                        .order('date', { ascending: false });
+                    if (error) throw error;
+
+                    // Transform ke format yang compatible dengan UI
+                    return (data || []).map(trx => ({
+                        id: trx.id,
+                        date: formatDateWIB(trx.date),
+                        dateRaw: trx.date,
+                        revenue: trx.total_revenue,
+                        cost: trx.total_cost,
+                        profit: trx.profit,
+                        cash: trx.cash_received,
+                        change: trx.change_amount,
+                        items: (trx.transaction_items || []).map(item => ({
+                            qty: item.quantity,
+                            product: { name: item.product_name, price: item.price }
+                        }))
+                    }));
+                } catch (e) { console.error('getTransactions:', e); return []; }
+            }
+
+            async saveTransaction(trx) {
+                try {
+                    const now = new Date().toISOString();
+
+                    // Insert transaction
+                    const { error: trxError } = await this.db.from('transactions').insert({
+                        id: trx.id,
+                        date: now,
+                        total_revenue: trx.revenue,
+                        total_cost: trx.cost,
+                        profit: trx.profit,
+                        cash_received: trx.cash,
+                        change_amount: trx.change
+                    });
+                    if (trxError) throw trxError;
+
+                    // Insert items
+                    const items = trx.items.map(item => ({
+                        transaction_id: trx.id,
+                        product_name: item.product.name,
+                        quantity: item.qty,
+                        price: item.product.price
+                    }));
+                    const { error: itemsError } = await this.db.from('transaction_items').insert(items);
+                    if (itemsError) throw itemsError;
+
+                    trx.date = formatDateWIB(now);
+                    return { status: 'success', transaction: trx };
+                } catch (e) {
+                    console.error('saveTransaction:', e);
+                    return { status: 'error', message: e.message };
+                }
+            }
+
+            async clearTransactions() {
+                try {
+                    // Delete all transaction_items first (cascade), then transactions
+                    await this.db.from('transaction_items').delete().neq('id', 0);
+                    await this.db.from('transactions').delete().neq('id', '');
+                } catch (e) { console.error('clearTransactions:', e); }
+            }
+
+            // --- Capital & Monthly Records ---
+            async getCapitalData() {
+                try {
+                    const [capitalsRes, monthliesRes] = await Promise.all([
+                        this.db.from('capital_records').select('*').order('date', { ascending: false }),
+                        this.db.from('monthly_records').select('*').order('date', { ascending: false })
+                    ]);
+                    if (capitalsRes.error) throw capitalsRes.error;
+                    if (monthliesRes.error) throw monthliesRes.error;
+
+                    return {
+                        capitals: (capitalsRes.data || []).map(c => ({ ...c, amount: Number(c.amount), date: formatDateWIB(c.date) })),
+                        monthlies: (monthliesRes.data || []).map(m => ({ ...m, amount: Number(m.amount), date: formatDateWIB(m.date) }))
+                    };
+                } catch (e) { console.error('getCapitalData:', e); return { capitals: [], monthlies: [] }; }
+            }
+
+            async addCapital(data) {
+                try {
+                    const { error } = await this.db.from('capital_records').insert({
+                        description: data.description,
+                        amount: data.amount,
+                        date: new Date().toISOString()
+                    });
+                    if (error) throw error;
+                } catch (e) { console.error('addCapital:', e); }
+            }
+
+            async addMonthlyRecord(data) {
+                try {
+                    const { error } = await this.db.from('monthly_records').insert({
+                        month: data.month,
+                        type: data.type,
+                        description: data.description,
+                        amount: data.amount,
+                        date: new Date().toISOString()
+                    });
+                    if (error) throw error;
+                } catch (e) { console.error('addMonthlyRecord:', e); }
+            }
+
+            async deleteCapital(id) {
+                try { await this.db.from('capital_records').delete().eq('id', id); }
+                catch (e) { console.error('deleteCapital:', e); }
+            }
+
+            async deleteMonthlyRecord(id) {
+                try { await this.db.from('monthly_records').delete().eq('id', id); }
+                catch (e) { console.error('deleteMonthlyRecord:', e); }
+            }
+
+            // --- Import Dummy Data (Client-Side Bulk Insert) ---
+            async importDummy() {
+                try {
+                    // 1. Clear all tables
+                    await this.db.from('transaction_items').delete().neq('id', 0);
+                    await this.db.from('transactions').delete().neq('id', '');
+                    await this.db.from('products').delete().neq('id', 0);
+                    await this.db.from('monthly_records').delete().neq('id', 0);
+                    await this.db.from('capital_records').delete().neq('id', 0);
+
+                    // 2. Insert products
+                    const products = [
+                        { id: 1700000000001, name: 'Es Kopi Susu', icon: 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80', price: 18000, cost: 8000 },
+                        { id: 1700000000002, name: 'Nasi Goreng', icon: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80', price: 25000, cost: 15000 },
+                        { id: 1700000000003, name: 'Es Teh Manis', icon: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80', price: 5000, cost: 2000 },
+                        { id: 1700000000004, name: 'Ayam Geprek', icon: 'https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80', price: 20000, cost: 11000 },
+                        { id: 1700000000005, name: 'Kentang Goreng', icon: 'https://images.unsplash.com/photo-1573080496219-bb080dd4f877?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80', price: 12000, cost: 6000 },
+                        { id: 1700000000006, name: 'Roti Bakar', icon: 'https://images.unsplash.com/photo-1484723091739-30a097e8f929?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80', price: 15000, cost: 7000 },
+                        { id: 1700000000007, name: 'Mie Goreng Spesial', icon: 'https://images.unsplash.com/photo-1585032226651-759b368d7246?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80', price: 15000, cost: 9000 },
+                        { id: 1700000000008, name: 'Burger Sapi', icon: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80', price: 22000, cost: 12000 },
+                        { id: 1700000000009, name: 'Caffe Latte', icon: 'https://images.unsplash.com/photo-1541167760496-1628856ab772?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80', price: 20000, cost: 9000 },
+                        { id: 1700000000010, name: 'Matcha Latte', icon: 'https://images.unsplash.com/photo-1536256263959-770b48d82b0a?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80', price: 22000, cost: 10000 },
+                        { id: 1700000000011, name: 'Pisang Goreng Keju', icon: 'https://images.unsplash.com/photo-1590080875515-8a3a8dc5735e?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80', price: 10000, cost: 4000 },
+                        { id: 1700000000012, name: 'Jus Alpukat', icon: 'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80', price: 15000, cost: 7000 },
+                        { id: 1700000000013, name: 'Sate Ayam', icon: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80', price: 25000, cost: 15000 },
+                        { id: 1700000000014, name: 'Kopi Hitam', icon: 'https://images.unsplash.com/photo-1550133730-695473e544be?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80', price: 10000, cost: 4000 },
+                        { id: 1700000000015, name: 'Mendoan', icon: 'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80', price: 12000, cost: 6000 }
+                    ];
+                    const { error: prodErr } = await this.db.from('products').insert(products);
+                    if (prodErr) throw prodErr;
+
+                    // 3. Insert capital records
+                    const capitals = [
+                        { description: 'Sewa Ruko 1 Tahun', amount: 15000000, date: '2026-04-01T01:00:00Z' },
+                        { description: 'Beli Mesin Kopi & Grinder', amount: 10000000, date: '2026-04-02T03:00:00Z' },
+                        { description: 'Renovasi interior & Peralatan Kasir', amount: 5000000, date: '2026-04-03T07:00:00Z' },
+                        { description: 'Papan Nama Toko & Neon Box', amount: 1500000, date: '2026-04-03T09:00:00Z' },
+                        { description: 'Lisensi Software POS & Internet', amount: 1000000, date: '2026-04-04T02:00:00Z' },
+                        { description: 'Stok Kemasan & Gelas Kertas Awal', amount: 1500000, date: '2026-04-05T03:00:00Z' }
+                    ];
+                    const { error: capErr } = await this.db.from('capital_records').insert(capitals);
+                    if (capErr) throw capErr;
+
+                    // 4. Insert monthly records
+                    const monthlies = [
+                        { month: '2026-04', type: 'income', description: 'Hasil Jualan Harian (April)', amount: 8000000, date: '2026-04-30T13:00:00Z' },
+                        { month: '2026-04', type: 'expense', description: 'Listrik dan Air (April)', amount: 800000, date: '2026-04-28T03:00:00Z' },
+                        { month: '2026-04', type: 'expense', description: 'Gaji 2 Karyawan (April)', amount: 3000000, date: '2026-04-29T10:00:00Z' },
+                        { month: '2026-04', type: 'expense', description: 'Bahan Baku Bulanan (April)', amount: 1200000, date: '2026-04-30T04:00:00Z' },
+                        { month: '2026-05', type: 'income', description: 'Hasil Jualan Harian (Mei)', amount: 8000000, date: '2026-05-20T13:00:00Z' },
+                        { month: '2026-05', type: 'income', description: 'Pesanan Katering Acara Kantor', amount: 2000000, date: '2026-05-15T07:00:00Z' },
+                        { month: '2026-05', type: 'expense', description: 'Listrik dan Air (Mei)', amount: 800000, date: '2026-05-20T03:00:00Z' },
+                        { month: '2026-05', type: 'expense', description: 'Gaji 2 Karyawan (Mei)', amount: 3000000, date: '2026-05-20T10:00:00Z' },
+                        { month: '2026-05', type: 'expense', description: 'Bahan Baku Bulanan (Mei)', amount: 1200000, date: '2026-05-21T04:00:00Z' },
+                        { month: '2026-06', type: 'income', description: 'Hasil Jualan Harian (Juni)', amount: 9500000, date: '2026-06-07T13:00:00Z' },
+                        { month: '2026-06', type: 'income', description: 'Pendapatan Sewa Space Banner', amount: 500000, date: '2026-06-05T04:00:00Z' },
+                        { month: '2026-06', type: 'expense', description: 'Listrik dan Air (Juni)', amount: 850000, date: '2026-06-07T03:00:00Z' },
+                        { month: '2026-06', type: 'expense', description: 'Gaji 2 Karyawan (Juni)', amount: 3000000, date: '2026-06-07T10:00:00Z' },
+                        { month: '2026-06', type: 'expense', description: 'Bahan Baku Bulanan (Juni)', amount: 1500000, date: '2026-06-07T04:00:00Z' },
+                        { month: '2026-06', type: 'expense', description: 'Biaya Wi-Fi & Internet (Juni)', amount: 350000, date: '2026-06-03T07:00:00Z' },
+                        { month: '2026-07', type: 'income', description: 'Hasil Jualan Harian (Juli)', amount: 11500000, date: '2026-07-31T13:00:00Z' },
+                        { month: '2026-07', type: 'income', description: 'Pendapatan Sewa Space Banner', amount: 500000, date: '2026-07-05T04:00:00Z' },
+                        { month: '2026-07', type: 'expense', description: 'Listrik dan Air (Juli)', amount: 900000, date: '2026-07-30T03:00:00Z' },
+                        { month: '2026-07', type: 'expense', description: 'Gaji 2 Karyawan (Juli)', amount: 3000000, date: '2026-07-30T10:00:00Z' },
+                        { month: '2026-07', type: 'expense', description: 'Bahan Baku Bulanan (Juli)', amount: 1800000, date: '2026-07-30T04:00:00Z' },
+                        { month: '2026-07', type: 'expense', description: 'Biaya Wi-Fi & Internet (Juli)', amount: 350000, date: '2026-07-03T07:00:00Z' }
+                    ];
+                    const { error: monErr } = await this.db.from('monthly_records').insert(monthlies);
+                    if (monErr) throw monErr;
+
+                    // 5. Insert transactions (split into batches to avoid payload limits)
+                    const transactions = [
+                        { id: 'TRX-1711958400001', date: '2026-04-01T04:30:00Z', total_revenue: 30000, total_cost: 17000, profit: 13000, cash_received: 50000, change_amount: 20000 },
+                        { id: 'TRX-1712048400002', date: '2026-04-02T05:45:00Z', total_revenue: 48000, total_cost: 22000, profit: 26000, cash_received: 50000, change_amount: 2000 },
+                        { id: 'TRX-1712235600003', date: '2026-04-04T08:20:00Z', total_revenue: 40000, total_cost: 18000, profit: 22000, cash_received: 50000, change_amount: 10000 },
+                        { id: 'TRX-1712397600004', date: '2026-04-06T11:10:00Z', total_revenue: 62000, total_cost: 32000, profit: 30000, cash_received: 100000, change_amount: 38000 },
+                        { id: 'TRX-1712660000005', date: '2026-04-09T12:30:00Z', total_revenue: 129000, total_cost: 69000, profit: 60000, cash_received: 150000, change_amount: 21000 },
+                        { id: 'TRX-1712832800006', date: '2026-04-11T06:15:00Z', total_revenue: 25000, total_cost: 13000, profit: 12000, cash_received: 50000, change_amount: 25000 },
+                        { id: 'TRX-1713092000007', date: '2026-04-14T09:40:00Z', total_revenue: 60000, total_cost: 28000, profit: 32000, cash_received: 100000, change_amount: 40000 },
+                        { id: 'TRX-1713351200008', date: '2026-04-17T12:00:00Z', total_revenue: 35000, total_cost: 16000, profit: 19000, cash_received: 50000, change_amount: 15000 },
+                        { id: 'TRX-1713783200009', date: '2026-04-22T13:30:00Z', total_revenue: 81000, total_cost: 42000, profit: 39000, cash_received: 100000, change_amount: 19000 },
+                        { id: 'TRX-1714128800010', date: '2026-04-26T05:00:00Z', total_revenue: 96000, total_cost: 44000, profit: 52000, cash_received: 100000, change_amount: 4000 },
+                        { id: 'TRX-1714561200011', date: '2026-05-01T03:30:00Z', total_revenue: 51000, total_cost: 23000, profit: 28000, cash_received: 100000, change_amount: 49000 },
+                        { id: 'TRX-1714734000012', date: '2026-05-03T05:15:00Z', total_revenue: 30000, total_cost: 17000, profit: 13000, cash_received: 50000, change_amount: 20000 },
+                        { id: 'TRX-1714906800013', date: '2026-05-05T07:00:00Z', total_revenue: 50000, total_cost: 26000, profit: 24000, cash_received: 50000, change_amount: 0 },
+                        { id: 'TRX-1715079600014', date: '2026-05-07T08:45:00Z', total_revenue: 60000, total_cost: 28000, profit: 32000, cash_received: 100000, change_amount: 40000 },
+                        { id: 'TRX-1715252400015', date: '2026-05-09T11:30:00Z', total_revenue: 90000, total_cost: 51000, profit: 39000, cash_received: 100000, change_amount: 10000 },
+                        { id: 'TRX-1715425200016', date: '2026-05-11T12:15:00Z', total_revenue: 50000, total_cost: 25000, profit: 25000, cash_received: 50000, change_amount: 0 },
+                        { id: 'TRX-1715598000017', date: '2026-05-13T06:00:00Z', total_revenue: 66000, total_cost: 30000, profit: 36000, cash_received: 100000, change_amount: 34000 },
+                        { id: 'TRX-1715770800018', date: '2026-05-15T10:30:00Z', total_revenue: 55000, total_cost: 30000, profit: 25000, cash_received: 100000, change_amount: 45000 },
+                        { id: 'TRX-1715943600019', date: '2026-05-17T13:00:00Z', total_revenue: 84000, total_cost: 38000, profit: 46000, cash_received: 100000, change_amount: 16000 },
+                        { id: 'TRX-1716116400020', date: '2026-05-19T05:30:00Z', total_revenue: 90000, total_cost: 44000, profit: 46000, cash_received: 100000, change_amount: 10000 },
+                        { id: 'TRX-1716289200021', date: '2026-05-21T08:00:00Z', total_revenue: 43000, total_cost: 23000, profit: 20000, cash_received: 50000, change_amount: 7000 },
+                        { id: 'TRX-1779417360022', date: '2026-05-22T02:36:00Z', total_revenue: 36000, total_cost: 16000, profit: 20000, cash_received: 50000, change_amount: 14000 },
+                        { id: 'TRX-1779453531023', date: '2026-05-22T12:38:51Z', total_revenue: 63000, total_cost: 29000, profit: 34000, cash_received: 63000, change_amount: 0 },
+                        { id: 'TRX-1779494262024', date: '2026-05-22T23:57:42Z', total_revenue: 92000, total_cost: 50000, profit: 42000, cash_received: 100000, change_amount: 8000 },
+                        { id: 'TRX-1779532534025', date: '2026-05-23T10:35:34Z', total_revenue: 30000, total_cost: 14000, profit: 16000, cash_received: 50000, change_amount: 20000 },
+                        { id: 'TRX-1779573685026', date: '2026-05-23T22:01:25Z', total_revenue: 5000, total_cost: 2000, profit: 3000, cash_received: 5000, change_amount: 0 },
+                        { id: 'TRX-1779613277027', date: '2026-05-24T09:01:17Z', total_revenue: 22000, total_cost: 10000, profit: 12000, cash_received: 50000, change_amount: 28000 },
+                        { id: 'TRX-1779656648028', date: '2026-05-24T21:04:08Z', total_revenue: 20000, total_cost: 11000, profit: 9000, cash_received: 20000, change_amount: 0 },
+                        { id: 'TRX-1779697379029', date: '2026-05-25T08:22:59Z', total_revenue: 45000, total_cost: 23000, profit: 22000, cash_received: 50000, change_amount: 5000 },
+                        { id: 'TRX-1779733191030', date: '2026-05-25T18:19:51Z', total_revenue: 36000, total_cost: 16000, profit: 20000, cash_received: 50000, change_amount: 14000 },
+                        { id: 'TRX-1779777462031', date: '2026-05-26T06:37:42Z', total_revenue: 55000, total_cost: 32000, profit: 23000, cash_received: 100000, change_amount: 45000 },
+                        { id: 'TRX-1779817954032', date: '2026-05-26T17:52:34Z', total_revenue: 83000, total_cost: 45000, profit: 38000, cash_received: 100000, change_amount: 17000 },
+                        { id: 'TRX-1779857485033', date: '2026-05-27T04:51:25Z', total_revenue: 42000, total_cost: 23000, profit: 19000, cash_received: 50000, change_amount: 8000 },
+                        { id: 'TRX-1779895697034', date: '2026-05-27T15:28:17Z', total_revenue: 61000, total_cost: 31000, profit: 30000, cash_received: 100000, change_amount: 39000 },
+                        { id: 'TRX-1779935648035', date: '2026-05-28T02:34:08Z', total_revenue: 55000, total_cost: 30000, profit: 25000, cash_received: 100000, change_amount: 45000 },
+                        { id: 'TRX-1779975899036', date: '2026-05-28T13:44:59Z', total_revenue: 55000, total_cost: 30000, profit: 25000, cash_received: 100000, change_amount: 45000 },
+                        { id: 'TRX-1780013511037', date: '2026-05-29T00:11:51Z', total_revenue: 15000, total_cost: 7000, profit: 8000, cash_received: 20000, change_amount: 5000 },
+                        { id: 'TRX-1780055922038', date: '2026-05-29T11:58:42Z', total_revenue: 88000, total_cost: 44000, profit: 44000, cash_received: 100000, change_amount: 12000 },
+                        { id: 'TRX-1780093534039', date: '2026-05-29T22:25:34Z', total_revenue: 52000, total_cost: 24000, profit: 28000, cash_received: 100000, change_amount: 48000 },
+                        { id: 'TRX-1780132705040', date: '2026-05-30T09:18:25Z', total_revenue: 50000, total_cost: 26000, profit: 24000, cash_received: 50000, change_amount: 0 },
+                        { id: 'TRX-1780173917041', date: '2026-05-30T20:45:17Z', total_revenue: 47000, total_cost: 22000, profit: 25000, cash_received: 50000, change_amount: 3000 },
+                        { id: 'TRX-1780215068042', date: '2026-05-31T08:11:08Z', total_revenue: 18000, total_cost: 8000, profit: 10000, cash_received: 20000, change_amount: 2000 },
+                        { id: 'TRX-1780253339043', date: '2026-05-31T18:48:59Z', total_revenue: 30000, total_cost: 14000, profit: 16000, cash_received: 50000, change_amount: 20000 },
+                        { id: 'TRX-1780296831044', date: '2026-06-01T06:53:51Z', total_revenue: 50000, total_cost: 30000, profit: 20000, cash_received: 50000, change_amount: 0 },
+                        { id: 'TRX-1780334022045', date: '2026-06-01T17:13:42Z', total_revenue: 39000, total_cost: 19000, profit: 20000, cash_received: 50000, change_amount: 11000 },
+                        { id: 'TRX-1780378054046', date: '2026-06-02T05:27:34Z', total_revenue: 30000, total_cost: 14000, profit: 16000, cash_received: 50000, change_amount: 20000 },
+                        { id: 'TRX-1780417885047', date: '2026-06-02T16:31:25Z', total_revenue: 37000, total_cost: 19000, profit: 18000, cash_received: 37000, change_amount: 0 },
+                        { id: 'TRX-1780452917048', date: '2026-06-03T02:15:17Z', total_revenue: 52000, total_cost: 28000, profit: 24000, cash_received: 100000, change_amount: 48000 },
+                        { id: 'TRX-1780493048049', date: '2026-06-03T13:24:08Z', total_revenue: 42000, total_cost: 20000, profit: 22000, cash_received: 50000, change_amount: 8000 },
+                        { id: 'TRX-1780534439050', date: '2026-06-04T00:53:59Z', total_revenue: 89000, total_cost: 49000, profit: 40000, cash_received: 100000, change_amount: 11000 },
+                        { id: 'TRX-1780573551051', date: '2026-06-04T11:45:51Z', total_revenue: 65000, total_cost: 33000, profit: 32000, cash_received: 100000, change_amount: 35000 },
+                        { id: 'TRX-1780617762052', date: '2026-06-05T00:02:42Z', total_revenue: 36000, total_cost: 16000, profit: 20000, cash_received: 50000, change_amount: 14000 },
+                        { id: 'TRX-1780653634053', date: '2026-06-05T10:00:34Z', total_revenue: 25000, total_cost: 15000, profit: 10000, cash_received: 50000, change_amount: 25000 },
+                        { id: 'TRX-1780693885054', date: '2026-06-05T21:11:25Z', total_revenue: 55000, total_cost: 32000, profit: 23000, cash_received: 100000, change_amount: 45000 },
+                        { id: 'TRX-1780733417055', date: '2026-06-06T08:10:17Z', total_revenue: 30000, total_cost: 14000, profit: 16000, cash_received: 50000, change_amount: 20000 },
+                        { id: 'TRX-1780774688056', date: '2026-06-06T19:38:08Z', total_revenue: 40000, total_cost: 22000, profit: 18000, cash_received: 50000, change_amount: 10000 },
+                        { id: 'TRX-1780811234057', date: '2026-06-08T03:15:00Z', total_revenue: 35000, total_cost: 15000, profit: 20000, cash_received: 50000, change_amount: 15000 },
+                        { id: 'TRX-1780852345058', date: '2026-06-08T07:20:00Z', total_revenue: 60000, total_cost: 30000, profit: 30000, cash_received: 100000, change_amount: 40000 },
+                        { id: 'TRX-1780893456059', date: '2026-06-09T04:45:00Z', total_revenue: 45000, total_cost: 25000, profit: 20000, cash_received: 50000, change_amount: 5000 },
+                        { id: 'TRX-1780934567060', date: '2026-06-09T11:30:00Z', total_revenue: 75000, total_cost: 40000, profit: 35000, cash_received: 100000, change_amount: 25000 },
+                        { id: 'TRX-1780975678061', date: '2026-06-10T05:10:00Z', total_revenue: 25000, total_cost: 15000, profit: 10000, cash_received: 50000, change_amount: 25000 },
+                        { id: 'TRX-1781016789062', date: '2026-06-10T12:50:00Z', total_revenue: 80000, total_cost: 45000, profit: 35000, cash_received: 100000, change_amount: 20000 }
+                    ];
+                    const { error: trxErr } = await this.db.from('transactions').insert(transactions);
+                    if (trxErr) throw trxErr;
+
+                    // 6. Insert transaction items (all at once)
+                    const items = [
+                        { transaction_id: 'TRX-1711958400001', product_name: 'Nasi Goreng', quantity: 1, price: 25000 },
+                        { transaction_id: 'TRX-1711958400001', product_name: 'Es Teh Manis', quantity: 1, price: 5000 },
+                        { transaction_id: 'TRX-1712048400002', product_name: 'Es Kopi Susu', quantity: 2, price: 18000 },
+                        { transaction_id: 'TRX-1712048400002', product_name: 'Kentang Goreng', quantity: 1, price: 12000 },
+                        { transaction_id: 'TRX-1712235600003', product_name: 'Roti Bakar', quantity: 2, price: 15000 },
+                        { transaction_id: 'TRX-1712235600003', product_name: 'Es Teh Manis', quantity: 2, price: 5000 },
+                        { transaction_id: 'TRX-1712397600004', product_name: 'Ayam Geprek', quantity: 2, price: 20000 },
+                        { transaction_id: 'TRX-1712397600004', product_name: 'Es Teh Manis', quantity: 2, price: 5000 },
+                        { transaction_id: 'TRX-1712397600004', product_name: 'Kentang Goreng', quantity: 1, price: 12000 },
+                        { transaction_id: 'TRX-1712660000005', product_name: 'Nasi Goreng', quantity: 3, price: 25000 },
+                        { transaction_id: 'TRX-1712660000005', product_name: 'Es Kopi Susu', quantity: 3, price: 18000 },
+                        { transaction_id: 'TRX-1712832800006', product_name: 'Ayam Geprek', quantity: 1, price: 20000 },
+                        { transaction_id: 'TRX-1712832800006', product_name: 'Es Teh Manis', quantity: 1, price: 5000 },
+                        { transaction_id: 'TRX-1713092000007', product_name: 'Kentang Goreng', quantity: 2, price: 12000 },
+                        { transaction_id: 'TRX-1713092000007', product_name: 'Es Kopi Susu', quantity: 2, price: 18000 },
+                        { transaction_id: 'TRX-1713351200008', product_name: 'Roti Bakar', quantity: 2, price: 15000 },
+                        { transaction_id: 'TRX-1713351200008', product_name: 'Es Teh Manis', quantity: 1, price: 5000 },
+                        { transaction_id: 'TRX-1713783200009', product_name: 'Nasi Goreng', quantity: 1, price: 25000 },
+                        { transaction_id: 'TRX-1713783200009', product_name: 'Ayam Geprek', quantity: 1, price: 20000 },
+                        { transaction_id: 'TRX-1713783200009', product_name: 'Es Kopi Susu', quantity: 2, price: 18000 },
+                        { transaction_id: 'TRX-1714128800010', product_name: 'Es Kopi Susu', quantity: 4, price: 18000 },
+                        { transaction_id: 'TRX-1714128800010', product_name: 'Kentang Goreng', quantity: 2, price: 12000 },
+                        { transaction_id: 'TRX-1714561200011', product_name: 'Es Kopi Susu', quantity: 2, price: 18000 },
+                        { transaction_id: 'TRX-1714561200011', product_name: 'Roti Bakar', quantity: 1, price: 15000 },
+                        { transaction_id: 'TRX-1714734000012', product_name: 'Nasi Goreng', quantity: 1, price: 25000 },
+                        { transaction_id: 'TRX-1714734000012', product_name: 'Es Teh Manis', quantity: 1, price: 5000 },
+                        { transaction_id: 'TRX-1714906800013', product_name: 'Ayam Geprek', quantity: 2, price: 20000 },
+                        { transaction_id: 'TRX-1714906800013', product_name: 'Es Teh Manis', quantity: 2, price: 5000 },
+                        { transaction_id: 'TRX-1715079600014', product_name: 'Kentang Goreng', quantity: 2, price: 12000 },
+                        { transaction_id: 'TRX-1715079600014', product_name: 'Es Kopi Susu', quantity: 2, price: 18000 },
+                        { transaction_id: 'TRX-1715252400015', product_name: 'Nasi Goreng', quantity: 3, price: 25000 },
+                        { transaction_id: 'TRX-1715252400015', product_name: 'Es Teh Manis', quantity: 3, price: 5000 },
+                        { transaction_id: 'TRX-1715425200016', product_name: 'Ayam Geprek', quantity: 1, price: 20000 },
+                        { transaction_id: 'TRX-1715425200016', product_name: 'Kentang Goreng', quantity: 1, price: 12000 },
+                        { transaction_id: 'TRX-1715425200016', product_name: 'Es Kopi Susu', quantity: 1, price: 18000 },
+                        { transaction_id: 'TRX-1715598000017', product_name: 'Roti Bakar', quantity: 2, price: 15000 },
+                        { transaction_id: 'TRX-1715598000017', product_name: 'Es Kopi Susu', quantity: 2, price: 18000 },
+                        { transaction_id: 'TRX-1715770800018', product_name: 'Nasi Goreng', quantity: 1, price: 25000 },
+                        { transaction_id: 'TRX-1715770800018', product_name: 'Ayam Geprek', quantity: 1, price: 20000 },
+                        { transaction_id: 'TRX-1715770800018', product_name: 'Es Teh Manis', quantity: 2, price: 5000 },
+                        { transaction_id: 'TRX-1715943600019', product_name: 'Es Kopi Susu', quantity: 4, price: 18000 },
+                        { transaction_id: 'TRX-1715943600019', product_name: 'Kentang Goreng', quantity: 1, price: 12000 },
+                        { transaction_id: 'TRX-1716116400020', product_name: 'Ayam Geprek', quantity: 2, price: 20000 },
+                        { transaction_id: 'TRX-1716116400020', product_name: 'Roti Bakar', quantity: 2, price: 15000 },
+                        { transaction_id: 'TRX-1716116400020', product_name: 'Es Teh Manis', quantity: 4, price: 5000 },
+                        { transaction_id: 'TRX-1716289200021', product_name: 'Es Kopi Susu', quantity: 1, price: 18000 },
+                        { transaction_id: 'TRX-1716289200021', product_name: 'Nasi Goreng', quantity: 1, price: 25000 },
+                        { transaction_id: 'TRX-1779417360022', product_name: 'Es Kopi Susu', quantity: 2, price: 18000 },
+                        { transaction_id: 'TRX-1779453531023', product_name: 'Es Kopi Susu', quantity: 2, price: 18000 },
+                        { transaction_id: 'TRX-1779453531023', product_name: 'Kentang Goreng', quantity: 1, price: 12000 },
+                        { transaction_id: 'TRX-1779453531023', product_name: 'Roti Bakar', quantity: 1, price: 15000 },
+                        { transaction_id: 'TRX-1779494262024', product_name: 'Kentang Goreng', quantity: 2, price: 12000 },
+                        { transaction_id: 'TRX-1779494262024', product_name: 'Es Kopi Susu', quantity: 1, price: 18000 },
+                        { transaction_id: 'TRX-1779494262024', product_name: 'Nasi Goreng', quantity: 2, price: 25000 },
+                        { transaction_id: 'TRX-1779532534025', product_name: 'Roti Bakar', quantity: 2, price: 15000 },
+                        { transaction_id: 'TRX-1779573685026', product_name: 'Es Teh Manis', quantity: 1, price: 5000 },
+                        { transaction_id: 'TRX-1779613277027', product_name: 'Es Teh Manis', quantity: 2, price: 5000 },
+                        { transaction_id: 'TRX-1779613277027', product_name: 'Kentang Goreng', quantity: 1, price: 12000 },
+                        { transaction_id: 'TRX-1779656648028', product_name: 'Ayam Geprek', quantity: 1, price: 20000 },
+                        { transaction_id: 'TRX-1779697379029', product_name: 'Es Teh Manis', quantity: 1, price: 5000 },
+                        { transaction_id: 'TRX-1779697379029', product_name: 'Kentang Goreng', quantity: 1, price: 12000 },
+                        { transaction_id: 'TRX-1779697379029', product_name: 'Nasi Goreng', quantity: 1, price: 25000 },
+                        { transaction_id: 'TRX-1779733191030', product_name: 'Es Kopi Susu', quantity: 2, price: 18000 },
+                        { transaction_id: 'TRX-1779777462031', product_name: 'Nasi Goreng', quantity: 2, price: 25000 },
+                        { transaction_id: 'TRX-1779777462031', product_name: 'Es Teh Manis', quantity: 1, price: 5000 },
+                        { transaction_id: 'TRX-1779817954032', product_name: 'Roti Bakar', quantity: 1, price: 15000 },
+                        { transaction_id: 'TRX-1779817954032', product_name: 'Es Kopi Susu', quantity: 1, price: 18000 },
+                        { transaction_id: 'TRX-1779817954032', product_name: 'Nasi Goreng', quantity: 2, price: 25000 },
+                        { transaction_id: 'TRX-1779857485033', product_name: 'Kentang Goreng', quantity: 1, price: 12000 },
+                        { transaction_id: 'TRX-1779857485033', product_name: 'Nasi Goreng', quantity: 1, price: 25000 },
+                        { transaction_id: 'TRX-1779857485033', product_name: 'Es Teh Manis', quantity: 1, price: 5000 },
+                        { transaction_id: 'TRX-1779895697034', product_name: 'Es Kopi Susu', quantity: 2, price: 18000 },
+                        { transaction_id: 'TRX-1779895697034', product_name: 'Nasi Goreng', quantity: 1, price: 25000 },
+                        { transaction_id: 'TRX-1779935648035', product_name: 'Ayam Geprek', quantity: 1, price: 20000 },
+                        { transaction_id: 'TRX-1779935648035', product_name: 'Nasi Goreng', quantity: 1, price: 25000 },
+                        { transaction_id: 'TRX-1779935648035', product_name: 'Es Teh Manis', quantity: 2, price: 5000 },
+                        { transaction_id: 'TRX-1779975899036', product_name: 'Ayam Geprek', quantity: 1, price: 20000 },
+                        { transaction_id: 'TRX-1779975899036', product_name: 'Es Teh Manis', quantity: 2, price: 5000 },
+                        { transaction_id: 'TRX-1779975899036', product_name: 'Nasi Goreng', quantity: 1, price: 25000 },
+                        { transaction_id: 'TRX-1780013511037', product_name: 'Roti Bakar', quantity: 1, price: 15000 },
+                        { transaction_id: 'TRX-1780055922038', product_name: 'Es Kopi Susu', quantity: 2, price: 18000 },
+                        { transaction_id: 'TRX-1780055922038', product_name: 'Ayam Geprek', quantity: 2, price: 20000 },
+                        { transaction_id: 'TRX-1780055922038', product_name: 'Kentang Goreng', quantity: 1, price: 12000 },
+                        { transaction_id: 'TRX-1780093534039', product_name: 'Kentang Goreng', quantity: 1, price: 12000 },
+                        { transaction_id: 'TRX-1780093534039', product_name: 'Es Teh Manis', quantity: 2, price: 5000 },
+                        { transaction_id: 'TRX-1780093534039', product_name: 'Roti Bakar', quantity: 2, price: 15000 },
+                        { transaction_id: 'TRX-1780132705040', product_name: 'Roti Bakar', quantity: 1, price: 15000 },
+                        { transaction_id: 'TRX-1780132705040', product_name: 'Es Teh Manis', quantity: 2, price: 5000 },
+                        { transaction_id: 'TRX-1780132705040', product_name: 'Nasi Goreng', quantity: 1, price: 25000 },
+                        { transaction_id: 'TRX-1780173917041', product_name: 'Kentang Goreng', quantity: 2, price: 12000 },
+                        { transaction_id: 'TRX-1780173917041', product_name: 'Es Kopi Susu', quantity: 1, price: 18000 },
+                        { transaction_id: 'TRX-1780173917041', product_name: 'Es Teh Manis', quantity: 1, price: 5000 },
+                        { transaction_id: 'TRX-1780215068042', product_name: 'Es Kopi Susu', quantity: 1, price: 18000 },
+                        { transaction_id: 'TRX-1780253339043', product_name: 'Roti Bakar', quantity: 2, price: 15000 },
+                        { transaction_id: 'TRX-1780296831044', product_name: 'Nasi Goreng', quantity: 2, price: 25000 },
+                        { transaction_id: 'TRX-1780334022045', product_name: 'Kentang Goreng', quantity: 2, price: 12000 },
+                        { transaction_id: 'TRX-1780334022045', product_name: 'Roti Bakar', quantity: 1, price: 15000 },
+                        { transaction_id: 'TRX-1780378054046', product_name: 'Roti Bakar', quantity: 2, price: 15000 },
+                        { transaction_id: 'TRX-1780417885047', product_name: 'Es Teh Manis', quantity: 1, price: 5000 },
+                        { transaction_id: 'TRX-1780417885047', product_name: 'Ayam Geprek', quantity: 1, price: 20000 },
+                        { transaction_id: 'TRX-1780417885047', product_name: 'Kentang Goreng', quantity: 1, price: 12000 },
+                        { transaction_id: 'TRX-1780452917048', product_name: 'Kentang Goreng', quantity: 1, price: 12000 },
+                        { transaction_id: 'TRX-1780452917048', product_name: 'Nasi Goreng', quantity: 1, price: 25000 },
+                        { transaction_id: 'TRX-1780452917048', product_name: 'Roti Bakar', quantity: 1, price: 15000 },
+                        { transaction_id: 'TRX-1780493048049', product_name: 'Es Kopi Susu', quantity: 1, price: 18000 },
+                        { transaction_id: 'TRX-1780493048049', product_name: 'Kentang Goreng', quantity: 2, price: 12000 },
+                        { transaction_id: 'TRX-1780534439050', product_name: 'Nasi Goreng', quantity: 1, price: 25000 },
+                        { transaction_id: 'TRX-1780534439050', product_name: 'Kentang Goreng', quantity: 2, price: 12000 },
+                        { transaction_id: 'TRX-1780534439050', product_name: 'Ayam Geprek', quantity: 2, price: 20000 },
+                        { transaction_id: 'TRX-1780573551051', product_name: 'Ayam Geprek', quantity: 2, price: 20000 },
+                        { transaction_id: 'TRX-1780573551051', product_name: 'Es Teh Manis', quantity: 2, price: 5000 },
+                        { transaction_id: 'TRX-1780573551051', product_name: 'Roti Bakar', quantity: 1, price: 15000 },
+                        { transaction_id: 'TRX-1780617762052', product_name: 'Es Kopi Susu', quantity: 2, price: 18000 },
+                        { transaction_id: 'TRX-1780653634053', product_name: 'Nasi Goreng', quantity: 1, price: 25000 },
+                        { transaction_id: 'TRX-1780693885054', product_name: 'Nasi Goreng', quantity: 2, price: 25000 },
+                        { transaction_id: 'TRX-1780693885054', product_name: 'Es Teh Manis', quantity: 1, price: 5000 },
+                        { transaction_id: 'TRX-1780733417055', product_name: 'Kentang Goreng', quantity: 1, price: 12000 },
+                        { transaction_id: 'TRX-1780733417055', product_name: 'Es Kopi Susu', quantity: 1, price: 18000 },
+                        { transaction_id: 'TRX-1780774688056', product_name: 'Ayam Geprek', quantity: 2, price: 20000 },
+                        { transaction_id: 'TRX-1780811234057', product_name: 'Sate Ayam', quantity: 1, price: 25000 },
+                        { transaction_id: 'TRX-1780811234057', product_name: 'Kopi Hitam', quantity: 1, price: 10000 },
+                        { transaction_id: 'TRX-1780852345058', product_name: 'Sate Ayam', quantity: 2, price: 25000 },
+                        { transaction_id: 'TRX-1780852345058', product_name: 'Kopi Hitam', quantity: 1, price: 10000 },
+                        { transaction_id: 'TRX-1780893456059', product_name: 'Sate Ayam', quantity: 1, price: 25000 },
+                        { transaction_id: 'TRX-1780893456059', product_name: 'Kopi Hitam', quantity: 2, price: 10000 },
+                        { transaction_id: 'TRX-1780934567060', product_name: 'Sate Ayam', quantity: 3, price: 25000 },
+                        { transaction_id: 'TRX-1780975678061', product_name: 'Sate Ayam', quantity: 1, price: 25000 },
+                        { transaction_id: 'TRX-1781016789062', product_name: 'Sate Ayam', quantity: 2, price: 25000 },
+                        { transaction_id: 'TRX-1781016789062', product_name: 'Kopi Hitam', quantity: 3, price: 10000 }
+                    ];
+                    const { error: itemErr } = await this.db.from('transaction_items').insert(items);
+                    if (itemErr) throw itemErr;
+
+                    return { status: 'success' };
+                } catch (e) {
+                    console.error('importDummy:', e);
+                    return { status: 'error', message: e.message };
+                }
+            }
+        }
+
+        const api = new SupabaseRepository(supabaseClient);
+
+        // Simpan produk sementara di memori
+        window.currentProducts = [];
+
+        /* ==========================================
+           USE CASES (Cart State)
+           ========================================== */
+        class CartState {
+            constructor() { this.items = []; }
+            add(product, qty = 1) {
+                const existing = this.items.find(i => String(i.product.id) === String(product.id));
+                if (existing) {
+                    existing.qty += qty;
+                    if (existing.qty <= 0) this.items = this.items.filter(i => String(i.product.id) !== String(product.id));
+                } else if (qty > 0) {
+                    this.items.push({ product, qty });
+                }
+            }
+            getRevenue() { return this.items.reduce((sum, item) => sum + (item.product.price * item.qty), 0); }
+            getCost() { return this.items.reduce((sum, item) => sum + (item.product.cost * item.qty), 0); }
+            clear() { this.items = []; }
+        }
+
+        const cart = new CartState();
+
+        /* ==========================================
+           CONTROLLERS & UI RENDERERS
+           ========================================== */
+
+        function switchView(viewId, btn) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(`view-${viewId}`).classList.add('active');
+            btn.classList.add('active');
+
+            if (viewId === 'pos') renderPOSProducts();
+            if (viewId === 'menu') renderMenuTable();
+            if (viewId === 'analytics') renderAnalytics();
+            if (viewId === 'bep') renderBEP();
+        }
+
+        // --- POS (Kasir) ---
+        async function renderPOSProducts() {
+            const grid = document.getElementById('pos-products');
+            grid.innerHTML = '<div style="color:var(--text-light); grid-column: 1 / -1;">Memuat menu dari Supabase...</div>';
+
+            const products = await api.getProducts();
+            window.currentProducts = products;
+
+            if (!Array.isArray(products) || products.length === 0) {
+                grid.innerHTML = '<div style="color:var(--text-light); grid-column: 1 / -1;">Belum ada menu di Database. Silakan tambah di Manajemen Menu, atau klik "Impor Data Demo".</div>';
+                return;
+            }
+
+            grid.innerHTML = products.map(p => `
+                <div class="product-card" onclick="addToCart('${p.id}')">
+                    <img src="${p.icon || 'https://placehold.co/300x200?text=No+Image'}" alt="${p.name}" class="product-img" onerror="this.src='https://placehold.co/300x200?text=No+Image'">
+                    <div class="product-name">${p.name}</div>
+                    <div class="product-price">${formatRp(p.price)}</div>
+                </div>
+            `).join('');
+        }
+
+        function renderCart() {
+            const list = document.getElementById('cart-list');
+            document.getElementById('cart-count').innerText = `${cart.items.reduce((sum, i) => sum + i.qty, 0)} item`;
+            document.getElementById('pos-total').innerText = formatRp(cart.getRevenue());
+
+            if (cart.items.length === 0) {
+                list.innerHTML = '<div style="text-align:center; color:var(--text-light); margin-top:20px;">Keranjang kosong</div>';
+                return;
+            }
+
+            list.innerHTML = cart.items.map(item => `
+                <div class="cart-item">
+                    <div class="item-info">
+                        <h4>${item.product.name}</h4>
+                        <p>${formatRp(item.product.price)}</p>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:15px;">
+                        <div class="stepper">
+                            <button onclick="updateCartQty('${item.product.id}', -1)">-</button>
+                            <span>${item.qty}</span>
+                            <button onclick="updateCartQty('${item.product.id}', 1)">+</button>
+                        </div>
+                        <div class="item-total">${formatRp(item.product.price * item.qty)}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        window.addToCart = (id) => {
+            const product = window.currentProducts.find(p => String(p.id) === String(id));
+            if (product) { cart.add(product, 1); renderCart(); }
+        };
+
+        window.updateCartQty = (id, change) => {
+            const product = window.currentProducts.find(p => String(p.id) === String(id));
+            if (product) { cart.add(product, change); renderCart(); }
+        };
+
+        window.processCheckout = async () => {
+            const cashInput = document.getElementById('pos-cash');
+            const cash = parseInt(cashInput.value);
+            const total = cart.getRevenue();
+            const cost = cart.getCost();
+
+            if (cart.items.length === 0) return alert('Keranjang belanja masih kosong!');
+            if (isNaN(cash) || cash < total) return alert('Nominal uang pembayaran tidak mencukupi!');
+
+            const btnPay = document.getElementById('btn-pay');
+            btnPay.innerText = "Memproses...";
+            btnPay.disabled = true;
+
+            const trx = {
+                id: 'TRX-' + Date.now(),
+                items: [...cart.items],
+                revenue: total,
+                cost: cost,
+                profit: total - cost,
+                cash: cash,
+                change: cash - total
+            };
+
+            const result = await api.saveTransaction(trx);
+
+            btnPay.innerText = "Proses Pembayaran";
+            btnPay.disabled = false;
+
+            if (result && result.status === 'success') {
+                const finalTrx = result.transaction;
+                cart.clear();
+                renderCart();
+                cashInput.value = '';
+
+                document.getElementById('receipt-details').innerHTML = `
+                    <div>ID: ${finalTrx.id}</div>
+                    <div>Waktu: ${finalTrx.date}</div>
+                    <hr style="margin: 10px 0; border:0; border-top:1px dashed #ccc;">
+                    ${finalTrx.items.map(i => `<div>${i.product.name} (x${i.qty}) : ${formatRp(i.product.price * i.qty)}</div>`).join('')}
+                    <hr style="margin: 10px 0; border:0; border-top:1px dashed #ccc;">
+                    <div>Total Belanja: ${formatRp(finalTrx.revenue)}</div>
+                    <div>Tunai: ${formatRp(finalTrx.cash)}</div>
+                    <div style="color:var(--success); font-weight:bold; font-size:1.1rem; margin-top:5px;">Kembali: ${formatRp(finalTrx.change)}</div>
+                `;
+                document.getElementById('receipt-modal').classList.add('active');
+                showToast('Transaksi berhasil disimpan ke cloud!', 'success');
+            } else {
+                alert("Gagal menyimpan transaksi: " + (result.message || 'Unknown error'));
+            }
+        };
+
+        // --- Menu Management ---
+        async function renderMenuTable() {
+            const tbody = document.getElementById('menu-table-body');
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Memuat dari Supabase...</td></tr>';
+
+            const products = await api.getProducts();
+
+            if (!Array.isArray(products) || products.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Belum ada menu terdaftar.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = products.map(p => `
+                <tr>
+                    <td><img src="${p.icon || 'https://placehold.co/150x150?text=No+Image'}" style="width: 45px; height: 45px; object-fit: cover; border-radius: 8px;" onerror="this.src='https://placehold.co/150x150?text=No+Image'"></td>
+                    <td style="font-weight:600;">${p.name}</td>
+                    <td>${formatRp(p.price)}</td>
+                    <td>${formatRp(p.cost)}</td>
+                    <td style="color:var(--success); font-weight:bold;">${formatRp(p.price - p.cost)}</td>
+                    <td><button class="btn-del" onclick="deleteMenu('${p.id}')">Hapus</button></td>
+                </tr>
+            `).join('');
+        }
+
+        window.addNewProduct = async () => {
+            const name = document.getElementById('menu-name').value;
+            const fileInput = document.getElementById('menu-image');
+            const price = parseInt(document.getElementById('menu-price').value);
+            const cost = parseInt(document.getElementById('menu-cost').value);
+
+            if (!name || isNaN(price) || isNaN(cost)) return alert('Harap isi Nama, Harga Jual, dan Harga Modal dengan valid!');
+
+            let icon = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80';
+
+            // Upload image to Supabase Storage if provided
+            if (fileInput.files.length > 0) {
+                showToast('Mengunggah gambar...', 'info');
+                const uploadedUrl = await api.uploadProductImage(fileInput.files[0]);
+                if (uploadedUrl) icon = uploadedUrl;
+            }
+
+            const result = await api.addProduct({ id: Date.now(), name, icon, price, cost });
+
+            if (result.status === 'success') {
+                document.getElementById('menu-name').value = '';
+                fileInput.value = '';
+                document.getElementById('menu-price').value = '';
+                document.getElementById('menu-cost').value = '';
+                renderMenuTable();
+                showToast(`Menu "${name}" berhasil ditambahkan!`, 'success');
+            } else {
+                alert('Gagal menambah menu: ' + (result.message || 'Unknown error'));
+            }
+        };
+
+        window.deleteMenu = async (id) => {
+            if (confirm('Yakin ingin menghapus menu ini dari Database?')) {
+                await api.deleteProduct(id);
+                renderMenuTable();
+                showToast('Menu berhasil dihapus', 'success');
+            }
+        };
+
+        // --- Analytics ---
+        window._analyticsHistory = null;
+
+        async function renderAnalytics() {
+            const filterSelect = document.getElementById('filter-month');
+            const selectedMonth = filterSelect.value;
+
+            if (!window._analyticsHistory) {
+                document.getElementById('bestseller-body').innerHTML = '<tr><td colspan="4" style="text-align:center;">Menarik data dari Supabase...</td></tr>';
+                document.getElementById('trx-history-body').innerHTML = '<tr><td colspan="8" style="text-align:center;">Menarik data...</td></tr>';
+                const history = await api.getTransactions();
+                window._analyticsHistory = history;
+
+                // Build month dropdown from data
+                const months = new Set();
+                history.forEach(trx => {
+                    if (trx.dateRaw) months.add(getYearMonth(trx.dateRaw));
+                });
+                const sortedMonths = [...months].sort().reverse();
+                const currentVal = filterSelect.value;
+                filterSelect.innerHTML = '<option value="all">Semua Bulan</option>';
+                sortedMonths.forEach(m => {
+                    const [y, mo] = m.split('-');
+                    const label = new Date(y, parseInt(mo) - 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+                    filterSelect.innerHTML += `<option value="${m}">${label}</option>`;
+                });
+                filterSelect.value = currentVal !== 'all' && sortedMonths.includes(currentVal) ? currentVal : 'all';
+            }
+
+            const history = window._analyticsHistory;
+
+            // Filter by month
+            let filtered = history;
+            if (selectedMonth !== 'all') {
+                filtered = history.filter(trx => trx.dateRaw && getYearMonth(trx.dateRaw) === selectedMonth);
+            }
+
+            let totalOmset = 0;
+            let totalProfit = 0;
+            let productSales = {};
+
+            if (filtered.length > 0) {
+                filtered.forEach(trx => {
+                    totalOmset += trx.revenue;
+                    totalProfit += trx.profit;
+                    trx.items.forEach(item => {
+                        const pName = item.product.name;
+                        if (!productSales[pName]) productSales[pName] = { qty: 0, omset: 0 };
+                        productSales[pName].qty += item.qty;
+                        productSales[pName].omset += (item.product.price * item.qty);
+                    });
+                });
+            }
+
+            document.getElementById('stat-trx-count').innerText = filtered.length;
+            document.getElementById('stat-omset').innerText = formatRp(totalOmset);
+            document.getElementById('stat-profit').innerText = formatRp(totalProfit);
+
+            // Best sellers
+            const bestSellers = Object.keys(productSales).map(key => ({
+                name: key, qty: productSales[key].qty, omset: productSales[key].omset
+            })).sort((a, b) => b.qty - a.qty);
+
+            const tbody = document.getElementById('bestseller-body');
+            if (bestSellers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Belum ada penjualan.</td></tr>';
+            } else {
+                tbody.innerHTML = bestSellers.map((bs, index) => `
+                    <tr>
+                        <td style="font-weight:bold;">#${index + 1}</td>
+                        <td>${bs.name}</td>
+                        <td>${bs.qty} Terjual</td>
+                        <td style="color:var(--primary); font-weight:600;">${formatRp(bs.omset)}</td>
+                    </tr>
+                `).join('');
+            }
+
+            // Transaction history
+            const trxBody = document.getElementById('trx-history-body');
+            if (filtered.length === 0) {
+                trxBody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Belum ada transaksi.</td></tr>';
+            } else {
+                trxBody.innerHTML = filtered.map(trx => {
+                    const detailId = 'detail-' + trx.id.replace(/[^a-zA-Z0-9]/g, '');
+                    const detailItems = trx.items.map(i =>
+                        `<div class="detail-item"><span>${i.product.name} x${i.qty}</span><span>${formatRp(i.product.price * i.qty)}</span></div>`
+                    ).join('');
+                    return `
+                        <tr>
+                            <td style="font-weight:600; font-size:0.8rem;">${trx.id}</td>
+                            <td style="white-space:nowrap;">${trx.date}</td>
+                            <td style="font-weight:600;">${formatRp(trx.revenue)}</td>
+                            <td>${formatRp(trx.cost)}</td>
+                            <td style="color:var(--success); font-weight:600;">${formatRp(trx.profit)}</td>
+                            <td>${formatRp(trx.cash)}</td>
+                            <td>${formatRp(trx.change)}</td>
+                            <td><button class="trx-detail-toggle" onclick="toggleDetail('${detailId}')">Lihat</button></td>
+                        </tr>
+                        <tr class="trx-detail-row" id="${detailId}" style="display:none;">
+                            <td colspan="8"><div class="trx-detail-content">${detailItems}</div></td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+
+        window.toggleDetail = (id) => {
+            const row = document.getElementById(id);
+            row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+        };
+
+        window.resetAnalytics = async () => {
+            if (confirm("PERINGATAN: Anda yakin ingin menghapus SELURUH riwayat transaksi? Tindakan ini permanen.")) {
+                await api.clearTransactions();
+                window._analyticsHistory = null;
+                renderAnalytics();
+                showToast('Riwayat transaksi berhasil dihapus', 'success');
+            }
+        };
+
+        window.exportToExcel = async () => {
+            if (!window._analyticsHistory) {
+                window._analyticsHistory = await api.getTransactions();
+            }
+
+            const history = window._analyticsHistory;
+            if (!history || history.length === 0) return alert("Belum ada data transaksi untuk diekspor!");
+
+            const selectedMonth = document.getElementById('filter-month').value;
+            let filtered = history;
+            let filterLabel = 'Semua_Bulan';
+
+            if (selectedMonth !== 'all') {
+                filtered = history.filter(trx => trx.dateRaw && getYearMonth(trx.dateRaw) === selectedMonth);
+                const [y, mo] = selectedMonth.split('-');
+                filterLabel = new Date(y, parseInt(mo) - 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }).replace(' ', '_');
+            }
+
+            if (filtered.length === 0) return alert("Tidak ada data transaksi untuk bulan yang dipilih!");
+
+            let csvContent = "ID Transaksi,Waktu,Total Omset (Rp),Total Modal (Rp),Laba Bersih (Rp),Detail Barang Terjual\n";
+            filtered.forEach(trx => {
+                const detail = trx.items.map(i => `${i.product.name} (x${i.qty})`).join(' | ');
+                csvContent += [trx.id, `"${trx.date}"`, trx.revenue, trx.cost, trx.profit, `"${detail}"`].join(',') + "\n";
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `Laporan_${filterLabel}.csv`;
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('Export CSV berhasil!', 'success');
+        };
+
+        window.closeModal = (id) => document.getElementById(id).classList.remove('active');
+
+        /* ==========================================
+           BALIK MODAL (BEP) CONTROLLER
+           ========================================== */
+        async function renderBEP() {
+            const data = await api.getCapitalData();
+            if (!data || !data.capitals) return;
+
+            const filterSelect = document.getElementById('filter-bep-month');
+            const selectedMonth = filterSelect.value;
+
+            const months = new Set();
+            data.monthlies.forEach(m => months.add(m.month));
+            const currentRealMonth = new Date().toISOString().slice(0, 7);
+            months.add(currentRealMonth);
+
+            const sortedMonths = [...months].sort().reverse();
+            filterSelect.innerHTML = '';
+            sortedMonths.forEach(m => {
+                const [y, mo] = m.split('-');
+                const label = new Date(y, parseInt(mo) - 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+                filterSelect.innerHTML += `<option value="${m}">${label}</option>`;
+            });
+
+            let activeMonth = selectedMonth;
+            if (!activeMonth || !sortedMonths.includes(activeMonth)) activeMonth = currentRealMonth;
+            filterSelect.value = activeMonth;
+
+            const [y, mo] = activeMonth.split('-');
+            const labelBulan = new Date(y, parseInt(mo) - 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+
+            document.getElementById('bep-income-label').innerText = `Pemasukan (${labelBulan})`;
+            document.getElementById('bep-expense-label').innerText = `Pengeluaran (${labelBulan})`;
+            document.getElementById('bep-profit-label').innerText = `Profit Bersih (${labelBulan})`;
+            document.getElementById('income-list-title').innerText = `Riwayat ${labelBulan}`;
+            document.getElementById('expense-list-title').innerText = `Riwayat ${labelBulan}`;
+
+            const totalModal = data.capitals.reduce((s, c) => s + c.amount, 0);
+            const monthlyIncomes = data.monthlies.filter(m => m.type === 'income' && m.month === activeMonth);
+            const monthlyExpenses = data.monthlies.filter(m => m.type === 'expense' && m.month === activeMonth);
+            const totalIncome = monthlyIncomes.reduce((s, m) => s + m.amount, 0);
+            const totalExpense = monthlyExpenses.reduce((s, m) => s + m.amount, 0);
+            const monthlyProfit = totalIncome - totalExpense;
+
+            const totalAllIncome = data.monthlies.filter(m => m.type === 'income').reduce((s, m) => s + m.amount, 0);
+            const totalAllExpense = data.monthlies.filter(m => m.type === 'expense').reduce((s, m) => s + m.amount, 0);
+            const totalRecovered = totalAllIncome - totalAllExpense;
+
+            document.getElementById('bep-total-modal').innerText = formatRp(totalModal);
+            document.getElementById('bep-income').innerText = formatRp(totalIncome);
+            document.getElementById('bep-expense').innerText = formatRp(totalExpense);
+            document.getElementById('bep-profit').innerText = formatRp(monthlyProfit);
+            document.getElementById('col-total-capital').innerText = formatRp(totalModal);
+            document.getElementById('col-total-income').innerText = formatRp(totalIncome);
+            document.getElementById('col-total-expense').innerText = formatRp(totalExpense);
+
+            const elEstimation = document.getElementById('bep-estimation');
+            const elProgress = document.getElementById('bep-progress');
+            const elRecovered = document.getElementById('bep-recovered');
+            const elTarget = document.getElementById('bep-target');
+            const elPct = document.getElementById('bep-pct');
+
+            elRecovered.innerText = `Terkumpul: ${formatRp(Math.max(0, totalRecovered))}`;
+            elTarget.innerText = `Target: ${formatRp(totalModal)}`;
+
+            if (totalModal <= 0) {
+                elEstimation.innerText = 'Belum ada data modal awal';
+                elProgress.style.width = '0%';
+                elPct.innerText = '0%';
+            } else if (totalRecovered >= totalModal) {
+                elEstimation.innerText = 'Modal sudah kembali sepenuhnya';
+                elProgress.style.width = '100%';
+                elPct.innerText = '100%';
+            } else if (monthlyProfit <= 0) {
+                const pct = Math.min(100, Math.max(0, (totalRecovered / totalModal) * 100));
+                elProgress.style.width = pct + '%';
+                elPct.innerText = Math.round(pct) + '%';
+                elEstimation.innerText = 'Profit bulan ini belum positif, estimasi tidak dapat dihitung';
+            } else {
+                const remaining = totalModal - totalRecovered;
+                const monthsLeft = Math.ceil(remaining / monthlyProfit);
+                const pct = Math.min(100, Math.max(0, (totalRecovered / totalModal) * 100));
+                elProgress.style.width = pct + '%';
+                elPct.innerText = Math.round(pct) + '%';
+                elEstimation.innerText = monthsLeft <= 1 ? 'Kurang dari 1 bulan lagi' : `Sekitar ${monthsLeft} bulan lagi`;
+            }
+
+            // Render capital list
+            const capitalList = document.getElementById('capital-list');
+            capitalList.innerHTML = data.capitals.length === 0
+                ? '<div style="text-align:center; color:var(--text-light); padding:12px;">Belum ada catatan modal.</div>'
+                : data.capitals.map(c => `
+                    <div class="record-item">
+                        <div><div class="rec-desc">${c.description}</div><div class="rec-date">${c.date}</div></div>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span class="rec-amount">${formatRp(c.amount)}</span>
+                            <button class="btn-del-sm" onclick="deleteCapitalRecord(${c.id})">Hapus</button>
+                        </div>
+                    </div>
+                `).join('');
+
+            // Render income list
+            const incomeList = document.getElementById('income-list');
+            incomeList.innerHTML = monthlyIncomes.length === 0
+                ? `<div style="text-align:center; color:var(--text-light); padding:12px;">Belum ada pemasukan pada ${labelBulan}.</div>`
+                : monthlyIncomes.map(m => `
+                    <div class="record-item">
+                        <div><div class="rec-desc">${m.description}</div><div class="rec-date">${m.date}</div></div>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span class="rec-amount income">+${formatRp(m.amount)}</span>
+                            <button class="btn-del-sm" onclick="deleteMonthly(${m.id})">Hapus</button>
+                        </div>
+                    </div>
+                `).join('');
+
+            // Render expense list
+            const expenseList = document.getElementById('expense-list');
+            expenseList.innerHTML = monthlyExpenses.length === 0
+                ? `<div style="text-align:center; color:var(--text-light); padding:12px;">Belum ada pengeluaran pada ${labelBulan}.</div>`
+                : monthlyExpenses.map(m => `
+                    <div class="record-item">
+                        <div><div class="rec-desc">${m.description}</div><div class="rec-date">${m.date}</div></div>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span class="rec-amount expense">-${formatRp(m.amount)}</span>
+                            <button class="btn-del-sm" onclick="deleteMonthly(${m.id})">Hapus</button>
+                        </div>
+                    </div>
+                `).join('');
+        }
+
+        window.addCapitalRecord = async () => {
+            const desc = document.getElementById('cap-desc').value;
+            const amount = parseInt(document.getElementById('cap-amount').value);
+            if (!desc || isNaN(amount) || amount <= 0) return alert('Harap isi keterangan dan jumlah modal dengan valid.');
+            await api.addCapital({ description: desc, amount });
+            document.getElementById('cap-desc').value = '';
+            document.getElementById('cap-amount').value = '';
+            renderBEP();
+            showToast('Modal berhasil dicatat', 'success');
+        };
+
+        window.addMonthlyRecord = async (type) => {
+            const prefix = type === 'income' ? 'inc' : 'exp';
+            const desc = document.getElementById(`${prefix}-desc`).value;
+            const amount = parseInt(document.getElementById(`${prefix}-amount`).value);
+            if (!desc || isNaN(amount) || amount <= 0) return alert('Harap isi keterangan dan jumlah dengan valid.');
+            const activeMonth = document.getElementById('filter-bep-month').value;
+            await api.addMonthlyRecord({ type, description: desc, amount, month: activeMonth });
+            document.getElementById(`${prefix}-desc`).value = '';
+            document.getElementById(`${prefix}-amount`).value = '';
+            renderBEP();
+            showToast(`${type === 'income' ? 'Pemasukan' : 'Pengeluaran'} berhasil dicatat`, 'success');
+        };
+
+        window.deleteCapitalRecord = async (id) => {
+            if (confirm('Hapus catatan modal ini?')) { await api.deleteCapital(id); renderBEP(); }
+        };
+
+        window.deleteMonthly = async (id) => {
+            if (confirm('Hapus catatan ini?')) { await api.deleteMonthlyRecord(id); renderBEP(); }
+        };
+
+        window.importDummyData = async () => {
+            if (confirm("Apakah Anda yakin ingin mengimpor seluruh data demo? Ini akan menghapus data lama dan menggantinya dengan data demo.")) {
+                showToast('Mengimpor data demo ke Supabase...', 'info');
+                const res = await api.importDummy();
+                if (res && res.status === 'success') {
+                    window._analyticsHistory = null;
+                    renderPOSProducts();
+                    renderCart();
+                    renderAnalytics();
+                    renderBEP();
+                    showToast('Data demo berhasil diimpor!', 'success');
+                } else {
+                    alert("Gagal mengimpor data demo: " + (res.message || "Unknown error"));
+                }
+            }
+        };
+
+        // Init App
+        renderPOSProducts();
+        renderCart();
+    </script>
+</body>
+</html>
