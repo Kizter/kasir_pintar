@@ -20,4 +20,4 @@ uploads/
 # Environment / Secrets
 # Jangan commit file ini jika berisi key asli
 # ========================
-# supabase-config.js
+supabase-config.js
